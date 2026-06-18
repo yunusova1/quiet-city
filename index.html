@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Тихий город | Карта зон тишины</title>
+    
+    <!-- Leaflet ядро -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Кластеры -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    
+    <!-- Теплокарта -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+    
+    <!-- Шрифты -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ru.js"></script>
+    
+    <!-- ⭐ Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Шапка -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <i class="fas fa-leaf"></i>
+                <span>Тихий<span class="accent">Город</span></span>
+            </div>
+            <div class="view-switcher">
+                <button class="view-btn active" data-view="cluster">
+                    <i class="fas fa-layer-group"></i> Кластеры
+                </button>
+                <button class="view-btn" data-view="heat">
+                    <i class="fas fa-fire"></i> Теплокарта
+                </button>
+            </div>
+            <div class="nav-stats" id="statsBadge">
+                <i class="fas fa-chart-line"></i> <span id="measureCount">0</span> замеров
+            </div>
+        </nav>
+
+        <!-- Основной контент -->
+        <div class="main-layout">
+            <!-- Карта -->
+            <div class="map-wrapper">
+                <div id="map"></div>
+                <div class="map-legend">
+                    <div class="legend-item"><span style="background:#2ecc71;"></span> Тихо (< 45 дБ)</div>
+                    <div class="legend-item"><span style="background:#a6e22e;"></span> Спокойно (45-55)</div>
+                    <div class="legend-item"><span style="background:#f1c40f;"></span> Умеренно (55-65)</div>
+                    <div class="legend-item"><span style="background:#e67e22;"></span> Шумно (65-80)</div>
+                    <div class="legend-item"><span style="background:#e74c3c;"></span> Очень шумно (> 80)</div>
+                </div>
+                
+                <!-- Кнопка истории замеров -->
+                <button class="history-toggle-btn" id="historyToggleBtn">
+                    <i class="fas fa-clock-rotate-left"></i> История
+                </button>
+            </div>
+
+            <!-- Правая панель -->
+            <div class="sidebar">
+                <!-- Шумомер -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-microphone-alt"></i>
+                        <h3>Акустический монитор</h3>
+                        <span class="badge" id="meterStatus">Неактивен</span>
+                    </div>
+                    <div class="meter-display">
+                        <div class="db-reading">
+                            <span class="db-value" id="dbValue">—</span>
+                            <span class="db-unit">дБ</span>
+                        </div>
+                        <div class="meter-bar">
+                            <div class="meter-fill" id="meterFill" style="width: 0%;"></div>
+                        </div>
+                        <div class="db-scale">
+                            <span>30</span><span>50</span><span>70</span><span>90</span><span>110</span>
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button id="startMeterBtn" class="btn btn-primary">
+                            <i class="fas fa-play"></i> Включить
+                        </button>
+                        <button id="stopMeterBtn" class="btn btn-secondary" disabled>
+                            <i class="fas fa-stop"></i> Выключить
+                        </button>
+                    </div>
+                    <div id="meterError" style="color:#e74c3c; font-size:0.75rem; margin-top:8px; display:none;"></div>
+                </div>
+
+                <!-- Геолокация -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-location-dot"></i>
+                        <h3>Геопозиция</h3>
+                    </div>
+                    <button id="getLocationBtn" class="btn btn-outline full-width">
+                        <i class="fas fa-satellite-dish"></i> Определить местоположение
+                    </button>
+                    <div id="locationInfo" class="location-card" style="display: none;">
+                        <div class="location-address" id="locationAddress">—</div>
+                        <div class="location-accuracy" id="locationAccuracy">—</div>
+                        <div style="margin-top: 8px;">
+                            <button id="adjustLocationBtn" class="btn btn-outline" style="width:100%; padding:6px; font-size:0.75rem;">
+                                <i class="fas fa-pen"></i> Уточнить позицию (радиус 50 м)
+                            </button>
+                        </div>
+                    </div>
+                    <button id="saveBtn" class="btn btn-success full-width" disabled>
+                        <i class="fas fa-floppy-disk"></i> Сохранить замер
+                    </button>
+                    <p style="font-size: 0.65rem; color: #888; margin-top: 8px; text-align: center;">
+                        💡 Кликните по карте → ручная установка точки
+                    </p>
+                </div>
+
+                <!-- Поиск -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-search"></i>
+                        <h3>Поиск места</h3>
+                    </div>
+                    <div class="search-box">
+                        <input type="text" id="searchInput" placeholder="Введите адрес..." autocomplete="off">
+                        <div id="searchResults" class="search-results"></div>
+                    </div>
+                </div>
+
+                <!-- Фильтры и данные -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-chart-line"></i>
+                        <h3>Фильтры и данные</h3>
+                    </div>
+                    
+                    <!-- Фильтр по цвету -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size:0.7rem; color:#666; margin-bottom:6px;">🎨 Уровень шума:</div>
+                        <div class="filter-group">
+                            <button class="filter-color-btn" data-color="green" style="background:#2ecc71;">🟢 Тихий</button>
+                            <button class="filter-color-btn" data-color="lightgreen" style="background:#a6e22e;">🟢 Спокойно</button>
+                            <button class="filter-color-btn" data-color="yellow" style="background:#f1c40f;">🟡 Умеренный</button>
+                            <button class="filter-color-btn" data-color="orange" style="background:#e67e22;">🟠 Шумный</button>
+                            <button class="filter-color-btn" data-color="red" style="background:#e74c3c;">🔴 Очень шумный</button>
+                            <button class="filter-color-btn active" data-color="all" style="background:#2ecc71;">Все</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Календарь и сортировка по периоду -->
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size:0.7rem; color:#666; margin-bottom:6px;">📅 Период:</div>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="text" id="datePicker" placeholder="Выберите дату" style="flex:1; min-width:120px; padding:8px 12px; border:2px solid #e0e8e4; border-radius:40px; font-size:0.8rem;">
+                            <button id="periodMenuBtn" class="btn btn-outline" style="padding:6px 14px; font-size:0.75rem;">
+                                <i class="fas fa-calendar-days"></i> Период
+                            </button>
+                        </div>
+                        <div id="periodMenu" class="period-menu" style="display:none; margin-top:8px;">
+                            <div class="filter-group">
+                                <button class="filter-period-btn" data-period="day">День</button>
+                                <button class="filter-period-btn" data-period="week">Неделя</button>
+                                <button class="filter-period-btn" data-period="month">Месяц</button>
+                                <button class="filter-period-btn" data-period="year">Год</button>
+                                <button class="filter-period-btn active" data-period="all">Всё время</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Статистика (экспорт/импорт удалены) -->
+                    <div style="margin-bottom: 12px; padding-top: 8px; border-top: 1px solid #e0e8e4;">
+                        <div style="font-size:0.65rem; color:#888; text-align:center; margin-top:8px;">
+                            📊 Всего: <span id="totalCount">0</span> | Показано: <span id="filteredCount">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Комментарии -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="fas fa-comment-dots"></i>
+                        <h3>Комментарии</h3>
+                    </div>
+                    <div id="commentsList" class="comments-list">
+                        <div class="empty-state">💬 Нет комментариев</div>
+                    </div>
+                    <textarea id="commentInput" rows="2" placeholder="Комментарий к последнему замеру..."></textarea>
+                    <button id="addCommentBtn" class="btn btn-outline full-width">Оставить комментарий</button>
+                    <p style="font-size: 0.65rem; color: #888; margin-top: 8px;">💡 Кликните по маркеру на карте → комментарий к точке</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно для комментария при сохранении -->
+        <div id="commentModal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <i class="fas fa-comment-pen"></i>
+                    <h2>Добавить комментарий</h2>
+                    <button class="modal-close" id="modalCloseBtn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="color:#555; margin-bottom:12px;">Добавьте комментарий к замеру <span id="modalDbDisplay">—</span> дБ</p>
+                    <textarea id="modalCommentInput" rows="4" placeholder="Введите комментарий к замеру..." style="width:100%; padding:12px; border:2px solid #e0e8e4; border-radius:16px; font-family:inherit;"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="modalSkipBtn">Пропустить</button>
+                    <button class="btn btn-primary" id="modalSaveCommentBtn"><i class="fas fa-save"></i> Сохранить</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- История замеров (Slide-out панель) -->
+        <div id="historyPanel" class="history-panel">
+            <div class="history-panel-header">
+                <h3><i class="fas fa-clock-rotate-left"></i> История замеров</h3>
+                <button class="history-panel-close" id="historyPanelClose">&times;</button>
+            </div>
+            <div id="historyPanelList" class="history-list"></div>
+        </div>
+        <div id="historyOverlay" class="history-overlay"></div>
+
+        <footer>
+            <i class="fas fa-cloud"></i> Данные хранятся в облаке Firebase • Автоматическая синхронизация в реальном времени
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+
+    <!-- PWA Манифест -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='48' fill='%232ecc71'/%3E%3Cpath fill='white' d='M50 20 L55 40 L75 45 L55 50 L50 70 L45 50 L25 45 L45 40 Z'/%3E%3C/svg%3E">
+    <meta name="theme-color" content="#2ecc71">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Тихий Город">
+</body>
+</html>
